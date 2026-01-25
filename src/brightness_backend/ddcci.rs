@@ -2,8 +2,8 @@ use crate::global_utils::div_round_u32;
 
 use super::{BrightnessBackend, BrightnessBackendConstructor};
 
-use ddc_hi::{Ddc, Display};
 use anyhow::bail;
+use ddc_hi::{Ddc, Display};
 use std::{cell::RefCell, rc::Rc};
 use thiserror::Error;
 
@@ -36,11 +36,11 @@ impl DdcDevice {
 				// Test if the display supports the Brightness feature
 				let mut display = displays.swap_remove(n);
 				if let Ok(vcp_response) = display.handle.get_vcp_feature(VCP_BRIGHTNESS_FEATURE) {
-					return Ok(Self {
+					Ok(Self {
 						display: Rc::new(RefCell::new(display)),
 						current: vcp_response.value() as u32,
-						max: vcp_response.maximum() as u32
-					});
+						max: vcp_response.maximum() as u32,
+					})
 				} else {
 					// The device was found, but doesn't support brightness control via DDC/CI
 					// NOTE: perhaps a fallback to the first useable display is better instead?
@@ -58,16 +58,19 @@ impl DdcDevice {
 		} else {
 			// Search for the first display responsive to the Brightness feature
 			for i in 0..displays.len() {
-				let vcp_response = displays.get_mut(i)
-					.unwrap().handle
-					.get_vcp_feature(VCP_BRIGHTNESS_FEATURE)?;
-
-				let display = displays.swap_remove(i);
-				return Ok(Self {
-					display: Rc::new(RefCell::new(display)),
-					current: vcp_response.value() as u32,
-					max: vcp_response.maximum() as u32
-				});
+				if let Ok(vcp_response) = displays
+					.get_mut(i)
+					.unwrap() // Careful: `i` is always valid here
+					.handle
+					.get_vcp_feature(VCP_BRIGHTNESS_FEATURE)
+				{
+					let display = displays.swap_remove(i);
+					return Ok(Self {
+						display: Rc::new(RefCell::new(display)),
+						current: vcp_response.value() as u32,
+						max: vcp_response.maximum() as u32,
+					});
+				}
 			}
 
 			// There are no displays that can be used, at all
@@ -96,7 +99,8 @@ impl DdcDevice {
 		let clamped_val = val.clamp(0, max);
 
 		// Try to update the Brightness
-		self.display.borrow_mut()
+		self.display
+			.borrow_mut()
 			.handle
 			.set_vcp_feature(VCP_BRIGHTNESS_FEATURE, clamped_val as u16)
 			.expect("DdcDevice failed to set brightness");
@@ -116,10 +120,9 @@ impl DdcDevice {
 	}
 }
 
-
 #[allow(unused)]
 pub(super) struct Ddcci {
-	device: DdcDevice
+	device: DdcDevice,
 }
 
 impl BrightnessBackendConstructor for Ddcci {
